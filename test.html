@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dot Life Simulator</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: #0f0c1a;
+      color: #f3e9d2;
+      font-family: monospace;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .center {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+    button {
+      background: none;
+      border: none;
+      font-size: 2rem;
+      color: #f3e9d2;
+      cursor: pointer;
+    }
+    #game-container {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .game-screen {
+      width: 86vw;
+      max-width: 960px;
+      aspect-ratio: 16 / 9;
+      border: 2px solid #f3e9d2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      background-color: #0f0c1a;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      image-rendering: crisp-edges;
+    }
+    .controls {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    .btn {
+      border: 2px solid #f3e9d2;
+      color: #f3e9d2;
+      background-color: transparent;
+      font-family: "Press Start 2P", monospace;
+      font-size: 0.6rem;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      transition: 0.1s;
+    }
+    .btn.active {
+      background-color: #f3e9d2;
+      color: #0f0c1a;
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="center" id="start-screen">
+    <svg onclick="startGame()" width="140" height="30" viewBox="0 0 140 30" style="cursor:pointer; display:block; margin: 0 auto;">
+      <rect x="0" y="0" width="140" height="30" fill="none" stroke="#f3e9d2" stroke-width="2" />
+      <g fill="#f3e9d2">
+        <!-- Better 'S' -->
+        <rect x="10" y="10" width="2" height="2"/>
+        <rect x="12" y="8" width="4" height="2"/>
+        <rect x="10" y="12" width="2" height="2"/>
+        <rect x="14" y="12" width="2" height="2"/>
+        <rect x="12" y="14" width="4" height="2"/>
+        <!-- T -->
+        <rect x="20" y="8" width="6" height="2"/>
+        <rect x="23" y="10" width="2" height="8"/>
+        <!-- A -->
+        <rect x="30" y="12" width="2" height="6"/>
+        <rect x="36" y="12" width="2" height="6"/>
+        <rect x="32" y="10" width="4" height="2"/>
+        <rect x="32" y="14" width="4" height="2"/>
+        <!-- R -->
+        <rect x="42" y="10" width="2" height="8"/>
+        <rect x="44" y="10" width="4" height="2"/>
+        <rect x="48" y="12" width="2" height="2"/>
+        <rect x="44" y="14" width="4" height="2"/>
+        <rect x="48" y="16" width="2" height="2"/>
+        <!-- T -->
+        <rect x="56" y="8" width="6" height="2"/>
+        <rect x="59" y="10" width="2" height="8"/>
+      </g>
+    </svg>
+    <div class="controls">
+      <button class="btn" onmousedown="hold('space')" onmouseup="release('space')" id="btn-space">SPACE</button>
+      <button class="btn" onmousedown="hold('left')" onmouseup="release('left')" id="btn-left">◀</button>
+      <div style="display: flex; flex-direction: column; gap: 0.3rem;">
+        <button class="btn" onmousedown="hold('up')" onmouseup="release('up')" id="btn-up">▲</button>
+        <button class="btn" onmousedown="hold('down')" onmouseup="release('down')" id="btn-down">▼</button>
+      </div>
+      <button class="btn" onmousedown="hold('right')" onmouseup="release('right')" id="btn-right">▶</button>
+    </div>
+  </div>
+
+  <div id="game-container">
+    <div class="game-screen">
+      <canvas id="game" width="256" height="144"></canvas>
+    </div>
+    <div class="controls">
+      <button class="btn" onmousedown="hold('space')" onmouseup="release('space')" id="btn-space">SPACE</button>
+      <button class="btn" onmousedown="hold('left')" onmouseup="release('left')" id="btn-left">◀</button>
+      <div style="display: flex; flex-direction: column; gap: 0.3rem;">
+        <button class="btn" onmousedown="hold('up')" onmouseup="release('up')" id="btn-up">▲</button>
+        <button class="btn" onmousedown="hold('down')" onmouseup="release('down')" id="btn-down">▼</button>
+      </div>
+      <button class="btn" onmousedown="hold('right')" onmouseup="release('right')" id="btn-right">▶</button>
+    </div>
+  </div>
+
+  <script>
+    const BG = '#0f0c1a';
+    const FG = '#f3e9d2';
+
+    const cvs = document.getElementById("game");
+    const ctx = cvs.getContext("2d");
+    const W = cvs.width, H = cvs.height, S = 16, SPEED = 1.2, TICK = 8;
+
+    const sprite = (draw) => {
+      const off = new OffscreenCanvas(S, S);
+      const c = off.getContext("2d");
+      c.imageSmoothingEnabled = false;
+      c.fillStyle = FG;
+      draw(c);
+      return off.transferToImageBitmap();
+    };
+
+    function drawHead(c, bounce = 0) {
+      c.fillRect(5, 2 + bounce, 6, 1);
+      c.fillRect(4, 3 + bounce, 8, 1);
+      c.fillRect(3, 4 + bounce, 10, 1);
+      c.fillRect(3, 5 + bounce, 10, 3);
+      c.fillRect(4, 8 + bounce, 8, 1);
+      c.fillRect(5, 9 + bounce, 6, 1);
+      c.clearRect(6, 6 + bounce, 1, 1);
+      c.clearRect(9, 6 + bounce, 1, 1);
+      c.clearRect(7, 8 + bounce, 1, 1);
+    }
+
+    function drawBackHead(c, bounce = 0) {
+      c.fillRect(5, 2 + bounce, 6, 1);
+      c.fillRect(4, 3 + bounce, 8, 1);
+      c.fillRect(3, 4 + bounce, 10, 1);
+      c.fillRect(3, 5 + bounce, 10, 3);
+      c.fillRect(4, 8 + bounce, 8, 1);
+      c.fillRect(5, 9 + bounce, 6, 1);
+    }
+
+    function drawBody(c) {
+      c.fillRect(5, 12, 6, 2);
+      c.fillRect(4, 12, 1, 1);
+      c.fillRect(11, 12, 1, 1);
+    }
+
+    function drawLegs(c, liftRight = false) {
+      const y = 15;
+      if (liftRight) {
+        c.fillRect(5, y - 1, 2, 1);
+        c.fillRect(9, y, 2, 1);
+      } else {
+        c.fillRect(5, y, 2, 1);
+        c.fillRect(9, y - 1, 2, 1);
+      }
+    }
+
+    function makeChar() {
+      const front = (alt, bounce = 0) => sprite((c) => {
+        drawHead(c, bounce);
+        drawBody(c);
+        drawLegs(c, alt);
+      });
+      const back = (alt, bounce = 0) => sprite((c) => {
+        drawBackHead(c, bounce);
+        drawBody(c);
+        drawLegs(c, alt);
+      });
+
+      return {
+        down: [front(false), front(true)],
+        up: [back(false), back(true)],
+        left: [front(false), front(true)],
+        right: [front(false), front(true)]
+      };
+    }
+
+    const sheet = makeChar();
+    const keys = {};
+    addEventListener("keydown", (e) => {
+      if (e.key === ' ') startGame();
+      keys[e.key] = true;
+      updateButtonState(e.key, true);
+    });
+    addEventListener("keyup", (e) => {
+      keys[e.key] = false;
+      updateButtonState(e.key, false);
+    });
+
+    const DIR = { u: "up", d: "down", l: "left", r: "right" };
+    let dir = DIR.d, frame = 0, tick = 0, idleTick = 0;
+    let x = W / 2 - S / 2, y = H / 2 - S / 2;
+
+    function update() {
+      let mv = false;
+      if (keys.ArrowUp) { y -= SPEED; dir = DIR.u; mv = true; }
+      if (keys.ArrowDown) { y += SPEED; dir = DIR.d; mv = true; }
+      if (keys.ArrowLeft) { x -= SPEED; dir = DIR.l; mv = true; }
+      if (keys.ArrowRight) { x += SPEED; dir = DIR.r; mv = true; }
+
+      if (mv) {
+        if (++tick >= TICK) {
+          tick = 0;
+          frame ^= 1;
+        }
+        idleTick = 0;
+      } else {
+        frame = 0;
+        idleTick++;
+      }
+
+      x = Math.max(0, Math.min(W - S, x));
+      y = Math.max(0, Math.min(H - S, y));
+    }
+
+    function draw() {
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, W, H);
+
+      const bounce = (Math.sin(idleTick / 30) > 0.5) ? 1 : 0;
+      const tempSheet = makeChar();
+      const sprite = idleTick > 10 ? tempSheet[dir][0] : tempSheet[dir][frame];
+
+      ctx.drawImage(sprite, Math.floor(x), Math.floor(y));
+    }
+
+    function startGame() {
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('game-container').style.display = 'flex';
+      loop();
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function hold(direction) {
+      const keyMap = {
+        up: 'ArrowUp',
+        down: 'ArrowDown',
+        left: 'ArrowLeft',
+        right: 'ArrowRight',
+        space: ' '
+      };
+      keys[keyMap[direction]] = true;
+      activateButton(direction);
+    }
+
+    function release(direction) {
+      const keyMap = {
+        up: 'ArrowUp',
+        down: 'ArrowDown',
+        left: 'ArrowLeft',
+        right: 'ArrowRight',
+        space: ' '
+      };
+      keys[keyMap[direction]] = false;
+      deactivateButton(direction);
+    }
+
+    function activateButton(dir) {
+      const btn = document.getElementById(`btn-${dir}`);
+      if (btn) btn.classList.add("active");
+    }
+
+    function deactivateButton(dir) {
+      const btn = document.getElementById(`btn-${dir}`);
+      if (btn) btn.classList.remove("active");
+    }
+
+    function updateButtonState(key, isActive) {
+      const map = {
+        'ArrowUp': 'up',
+        'ArrowDown': 'down',
+        'ArrowLeft': 'left',
+        'ArrowRight': 'right',
+        ' ': 'space'
+      };
+      const dir = map[key];
+      if (dir) {
+        const btn = document.getElementById(`btn-${dir}`);
+        if (btn) btn.classList.toggle("active", isActive);
+      }
+    }
+  </script>
+</body>
+</html>
